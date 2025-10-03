@@ -3,6 +3,7 @@ import { Users, Download, Calendar, Loader2, Search, Upload, FileSpreadsheet, Im
 import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 import { generateCertificate, downloadPDF } from '../utils/certificateGenerator';
+import { bytesToBase64 } from '../utils/bytes';
 
 export default function ParticipantsList() {
   const [participants, setParticipants] = useState([]);
@@ -11,6 +12,7 @@ export default function ParticipantsList() {
   const [excelRows, setExcelRows] = useState([]);
   const [logoBytes, setLogoBytes] = useState(null);
   const [signatureBytes, setSignatureBytes] = useState(null);
+  const [secondLogoBytes, setSecondLogoBytes] = useState(null);
   const [signatureLabel, setSignatureLabel] = useState('Authorized Signatory');
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all'); // all|pending|delivered|bounced
@@ -42,8 +44,10 @@ export default function ParticipantsList() {
       const qrBytes = await maybeGenerateQrBytes(participant, settings);
       const pdfBytes = await generateCertificate(ensureStatus(participant), {
         logoBytes,
+        secondLogoBytes,
         signatureBytes,
         signatureLabel,
+        authorizedName: settings.authorizedName,
         eventName: settings.eventName,
         eventDetails: settings.eventDetails,
         organizerName: settings.organizerName,
@@ -118,6 +122,67 @@ export default function ParticipantsList() {
     setParticipants(merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   };
 
+  const sendBulkEmails = async () => {
+    const serverUrl = (import.meta.env && import.meta.env.VITE_EMAIL_SERVER_URL) || 'http://localhost:3001';
+    const settings = readSettings();
+    const recipients = [];
+    for (const p of filteredParticipants) {
+      if (!p.email) continue;
+      const qrBytes = await maybeGenerateQrBytes(p, settings);
+      const pdfBytes = await generateCertificate(p, {
+        logoBytes,
+        secondLogoBytes,
+        signatureBytes,
+        signatureLabel,
+        authorizedName: settings.authorizedName,
+        eventName: settings.eventName,
+        eventDetails: settings.eventDetails,
+        organizerName: settings.organizerName,
+        organizerWebsite: settings.organizerWebsite,
+        certifyText: settings.certifyText,
+        fatherPrefix: settings.fatherPrefix,
+        completionText: settings.completionText ? `${settings.completionText} ${settings.eventName || ''}`.trim() : undefined,
+        completionSubText: settings.completionSubText,
+        qrBytes,
+      });
+      const base64 = bytesToBase64(new Uint8Array(pdfBytes));
+      recipients.push({
+        email: p.email,
+        name: p.name,
+        filename: `certificate_${p.regNo}.pdf`,
+        pdfBase64: base64,
+      });
+    }
+    if (recipients.length === 0) {
+      alert('No emails found in the current list. Ensure participants include an email field.');
+      return;
+    }
+    try {
+      // quick health check for better error ux
+      await fetch(`${serverUrl}/api/health`).then(r => r.ok);
+    } catch (e) {
+      alert('Email server is not reachable. Start it with "npm run server" and set VITE_EMAIL_SERVER_URL.');
+      return;
+    }
+    try {
+      const resp = await fetch(`${serverUrl}/api/send-bulk`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipients }),
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        alert(`Bulk email failed: ${json.error || 'Unknown error'}`);
+        return;
+      }
+      const ok = json.results.filter(r => r.ok).length;
+      const fail = json.results.length - ok;
+      alert(`Emails sent. Success: ${ok}, Failed: ${fail}`);
+    } catch (e) {
+      alert('Failed to reach email server. Check your network, CORS, and server logs.');
+    }
+  };
+
   const handleImageUpload = async (e, setter) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
@@ -141,8 +206,10 @@ export default function ParticipantsList() {
         const qrBytes = await maybeGenerateQrBytes(row, settings);
         const pdfBytes = await generateCertificate(row, {
           logoBytes,
+          secondLogoBytes,
           signatureBytes,
           signatureLabel,
+          authorizedName: settings.authorizedName,
           eventName: settings.eventName,
           eventDetails: settings.eventDetails,
           organizerName: settings.organizerName,
@@ -212,13 +279,16 @@ export default function ParticipantsList() {
           <button onClick={runNameCleanup} className="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg">
             <Wand2 className="w-4 h-4" /> Clean Names
           </button>
+          <button onClick={sendBulkEmails} className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg">
+            Send Emails
+          </button>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
         <div className="col-span-1 bg-slate-50 rounded-xl p-4 border border-slate-200">
           <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2"><FileSpreadsheet className="w-4 h-4" /> Import from Excel</h3>
-          <p className="text-sm text-slate-600 mb-3">Columns: <span className="font-mono">name</span>, <span className="font-mono">fatherName</span>, <span className="font-mono">regNo</span></p>
+          <p className="text-sm text-slate-600 mb-3">Columns: <span className="font-mono">name</span>, <span className="font-mono">fatherName</span>, <span className="font-mono">regNo</span>, <span className="font-mono">email</span></p>
           <div className="flex gap-2 mb-3">
             <button onClick={downloadTemplate} className="px-3 py-2 rounded-md text-sm font-medium bg-slate-200 text-slate-800 hover:bg-slate-300">Download Template</button>
           </div>
@@ -238,12 +308,19 @@ export default function ParticipantsList() {
         </div>
 
         <div className="col-span-1 bg-slate-50 rounded-xl p-4 border border-slate-200">
-          <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logo (optional)</h3>
-          <label className="flex items-center justify-center gap-2 w-full cursor-pointer bg-white border border-dashed border-slate-300 hover:border-slate-400 rounded-lg py-6 text-slate-700">
-            <Upload className="w-4 h-4" /> Choose PNG/JPEG
-            <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setLogoBytes)} />
-          </label>
-          {logoBytes && <p className="mt-3 text-sm text-green-700">Logo attached</p>}
+          <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Logos (optional)</h3>
+          <div className="grid grid-cols-1 gap-3">
+            <label className="flex items-center justify-center gap-2 w-full cursor-pointer bg-white border border-dashed border-slate-300 hover:border-slate-400 rounded-lg py-6 text-slate-700">
+              <Upload className="w-4 h-4" /> Left Logo (PNG/JPEG)
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setLogoBytes)} />
+            </label>
+            {logoBytes && <p className="text-xs text-green-700">Left logo attached</p>}
+            <label className="flex items-center justify-center gap-2 w-full cursor-pointer bg-white border border-dashed border-slate-300 hover:border-slate-400 rounded-lg py-6 text-slate-700">
+              <Upload className="w-4 h-4" /> Right Logo (PNG/JPEG)
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setSecondLogoBytes)} />
+            </label>
+            {secondLogoBytes && <p className="text-xs text-green-700">Right logo attached</p>}
+          </div>
         </div>
 
         <div className="col-span-1 bg-slate-50 rounded-xl p-4 border border-slate-200">
@@ -294,6 +371,7 @@ export default function ParticipantsList() {
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Reg. No.</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Name</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Father's Name</th>
+                <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Email</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Date</th>
                 <th className="text-left py-3 px-4 text-sm font-semibold text-slate-700">Status</th>
                 <th className="text-center py-3 px-4 text-sm font-semibold text-slate-700">Action</th>
@@ -310,6 +388,9 @@ export default function ParticipantsList() {
                   </td>
                   <td className="py-4 px-4">
                     <span className="text-slate-600">{participant.fatherName}</span>
+                  </td>
+                  <td className="py-4 px-4">
+                    <span className="text-slate-600">{participant.email || 'N/A'}</span>
                   </td>
                   <td className="py-4 px-4">
                     <div className="flex items-center gap-2 text-slate-600 text-sm">
@@ -355,17 +436,39 @@ export default function ParticipantsList() {
 
 // Helpers
 function normalizeParticipantRow(r, idx) {
-  const pick = (...keys) => {
-    for (const k of keys) {
-      if (r[k] !== undefined && String(r[k]).trim() !== '') return String(r[k]).trim();
+  const sanitize = (s) => String(s || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, ''); // remove spaces, dashes, underscores, etc.
+
+  const getByHeaders = (accepted) => {
+    const acceptedSet = new Set(accepted.map(sanitize));
+    for (const key of Object.keys(r)) {
+      const norm = sanitize(key);
+      if (acceptedSet.has(norm)) {
+        const val = r[key];
+        if (val !== undefined && String(val).trim() !== '') return String(val).trim();
+      }
     }
     return '';
   };
+
+  const name = getByHeaders(['name']);
+  const fatherName = getByHeaders([
+    'fatherName', "father's name", 'fathers name', 'father', 'guardian',
+  ]);
+  const regNo = getByHeaders([
+    'regNo', 'registration', 'registration no', 'registration number', 'reg no', 'reg_number', 'reg-number', 'regid', 'id',
+  ]);
+  const email = getByHeaders([
+    'email', 'e-mail', 'email id', 'emailid', 'email address', 'emailaddress', 'mail', 'mail id', 'mailid', 'contact email'
+  ]);
+
   return {
     id: `xlsx-${Date.now()}-${idx}`,
-    name: pick('name', 'Name', 'NAME'),
-    fatherName: pick('fatherName', 'FatherName', "father's name", "Father's Name", 'FATHERNAME', 'Father'),
-    regNo: pick('regNo', 'RegNo', 'registration', 'Registration No', 'Registration Number', 'Reg No', 'Reg_Number'),
+    name,
+    fatherName,
+    regNo,
+    email,
     createdAt: new Date().toISOString(),
     certificateGenerated: false,
     deliveredStatus: 'pending',
@@ -388,10 +491,10 @@ async function fileToBytes(file) {
 
 function downloadTemplate() {
   const rows = [
-    { name: 'John Doe', fatherName: 'Richard Roe', regNo: 'REG001' },
-    { name: 'Jane Smith', fatherName: 'Alan Smith', regNo: 'REG002' },
+    { name: 'John Doe', fatherName: 'Richard Roe', regNo: 'REG001', email: 'john@example.com' },
+    { name: 'Jane Smith', fatherName: 'Alan Smith', regNo: 'REG002', email: 'jane@example.com' },
   ];
-  const ws = XLSX.utils.json_to_sheet(rows, { header: ['name', 'fatherName', 'regNo'] });
+  const ws = XLSX.utils.json_to_sheet(rows, { header: ['name', 'fatherName', 'regNo', 'email'] });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Participants');
   const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });

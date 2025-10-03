@@ -14,14 +14,14 @@ export async function generateCertificate(participant, options = {}) {
   const borderColor = rgb(0.13, 0.29, 0.53);
   const accentColor = rgb(0.8, 0.65, 0.13);
 
-  // Optional: draw a logo image in the header if provided (no border, 1px offset from inner frame at x=40)
+  // Optional: draw a logo image in the header if provided (slightly reduced size)
   if (options.logoBytes) {
     try {
       const logoImage = await embedImage(pdfDoc, options.logoBytes);
-      const logoWidth = 90;
+      const logoWidth = 84; // reduced by 6px for better balance
       const logoHeight = (logoImage.height / logoImage.width) * logoWidth;
-      const logoX = 41;
-      const logoY = height - 110 - logoHeight / 2;
+      const logoX = 42; // 2px from inner frame (x=40)
+      const logoY = height - 112 - logoHeight / 2; // drop by 2px for more top spacing
       page.drawImage(logoImage, {
         x: logoX,
         y: logoY,
@@ -31,14 +31,16 @@ export async function generateCertificate(participant, options = {}) {
     } catch {}
   }
 
-  // Optional: draw a second logo on the right side if provided
-  if (options.secondLogoBytes) {
+  // Optional: draw a second logo on the right side; if not provided, reuse the main logo
+  const rightLogoBytes = options.secondLogoBytes || options.logoBytes;
+  if (rightLogoBytes) {
     try {
-      const logo2 = await embedImage(pdfDoc, options.secondLogoBytes);
-      const logoWidth = 90;
+      const logo2 = await embedImage(pdfDoc, rightLogoBytes);
+      const logoWidth = 84; // match left logo
       const logoHeight = (logo2.height / logo2.width) * logoWidth;
-      const logoX = width - 41 - logoWidth;
-      const logoY = height - 110 - logoHeight / 2;
+      // Ensure 2px gap from inner border: inner left=40, right=width-40
+      const logoX = width - 42 - logoWidth; // 2px from inner right
+      const logoY = height - 112 - logoHeight / 2; // drop by 2px for top spacing
       page.drawImage(logo2, {
         x: logoX,
         y: logoY,
@@ -48,6 +50,7 @@ export async function generateCertificate(participant, options = {}) {
     } catch {}
   }
 
+  // Outer border: symmetric margins (30 on all sides) for perfect alignment
   page.drawRectangle({
     x: 30,
     y: 30,
@@ -70,7 +73,7 @@ export async function generateCertificate(participant, options = {}) {
   const titleWidth = timesRomanBoldFont.widthOfTextAtSize(title, 48);
   page.drawText(title, {
     x: width / 2 - titleWidth / 2,
-    y: height - 120,
+    y: height - 123, // moved down by 3px for better top spacing
     size: 48,
     font: timesRomanBoldFont,
     color: borderColor,
@@ -80,7 +83,7 @@ export async function generateCertificate(participant, options = {}) {
   const subWidth = timesRomanFont.widthOfTextAtSize(sub, 20);
   page.drawText(sub, {
     x: width / 2 - subWidth / 2,
-    y: height - 160,
+    y: height - 162, // down by 2px
     size: 20,
     font: timesRomanFont,
     color: rgb(0.3, 0.3, 0.3),
@@ -91,10 +94,10 @@ export async function generateCertificate(participant, options = {}) {
   const eventDetails = options.eventDetails || 'Participation Certificate';
   const eventNameSize = 16;
   const eventDetailsSize = 24; // visually emphasized per user
-  const spacingEvent = 2; // 2pt between lines
+  const spacingEvent = 6; // add more separation between event lines
 
   // Positioning below subtitle/line
-  const eventNameY = height - 185;
+  const eventNameY = height - 191; // 2px more gap from the divider line above
   const eventDetailsY = eventNameY - spacingEvent - eventDetailsSize;
 
   const eventNameWidth = timesRomanBoldFont.widthOfTextAtSize(eventName, eventNameSize);
@@ -115,15 +118,15 @@ export async function generateCertificate(participant, options = {}) {
   });
 
   page.drawLine({
-    start: { x: width / 2 - 150, y: height - 173 },
-    end: { x: width / 2 + 150, y: height - 173 },
+    start: { x: width / 2 - 150, y: height - 178 }, // align divider with new spacing
+    end: { x: width / 2 + 150, y: height - 178 },
     thickness: 1,
     color: accentColor,
   });
 
   const certifyText = options.certifyText || 'This is to certify that';
   const certifySize = 14;
-  const certifySpacing = 6; // add a bit more breathing room
+  const certifySpacing = 12; // increased to avoid overlap with name line
   const certifyY = eventDetailsY - certifySpacing - certifySize;
   const certifyWidth = timesRomanItalicFont.widthOfTextAtSize(certifyText, certifySize);
   page.drawText(certifyText, {
@@ -139,15 +142,15 @@ export async function generateCertificate(participant, options = {}) {
   const regWithNameWidth = timesRomanBoldFont.widthOfTextAtSize(regWithName, 22);
   page.drawText(regWithName, {
     x: width / 2 - regWithNameWidth / 2,
-    y: height - 245,
+    y: height - 270, // moved further down to clear certify line
     size: 22,
     font: timesRomanBoldFont,
     color: borderColor,
   });
 
   page.drawLine({
-    start: { x: width / 2 - regWithNameWidth / 2 - 20, y: height - 255 },
-    end: { x: width / 2 + regWithNameWidth / 2 + 20, y: height - 255 },
+    start: { x: width / 2 - regWithNameWidth / 2 - 20, y: height - 282 },
+    end: { x: width / 2 + regWithNameWidth / 2 + 20, y: height - 282 },
     thickness: 1,
     color: rgb(0.5, 0.5, 0.5),
   });
@@ -157,7 +160,7 @@ export async function generateCertificate(participant, options = {}) {
   const fatherWidth = timesRomanFont.widthOfTextAtSize(fatherText, 16);
   page.drawText(fatherText, {
     x: width / 2 - fatherWidth / 2,
-    y: height - 280,
+    y: height - 305, // maintain rhythm under the underline
     size: 16,
     font: timesRomanFont,
     color: rgb(0.3, 0.3, 0.3),
@@ -168,7 +171,7 @@ export async function generateCertificate(participant, options = {}) {
   const completionWidth = timesRomanFont.widthOfTextAtSize(completionText, 14);
   page.drawText(completionText, {
     x: width / 2 - completionWidth / 2,
-    y: height - 315,
+    y: height - 335,
     size: 14,
     font: timesRomanFont,
     color: rgb(0.2, 0.2, 0.2),
@@ -178,7 +181,7 @@ export async function generateCertificate(participant, options = {}) {
   const completionSubWidth = timesRomanFont.widthOfTextAtSize(completionSub, 14);
   page.drawText(completionSub, {
     x: width / 2 - completionSubWidth / 2,
-    y: height - 335,
+    y: height - 357,
     size: 14,
     font: timesRomanFont,
     color: rgb(0.2, 0.2, 0.2),

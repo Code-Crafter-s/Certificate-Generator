@@ -8,7 +8,31 @@ export default function CertificateSuccess({ participant, onReset }) {
   const handleDownload = async () => {
     setGenerating(true);
     try {
-      const pdfBytes = await generateCertificate(participant);
+      const settings = JSON.parse(localStorage.getItem('cert_settings') || '{}');
+      // In success screen we don't have logo/signature bytes; keep it simple but include texts and QR if enabled
+      let qrBytes = null;
+      if (settings.qrEnabled && settings.qrBaseUrl) {
+        try {
+          const url = new URL(settings.qrBaseUrl);
+          url.searchParams.set('name', participant.name);
+          url.searchParams.set('regNo', participant.regNo);
+          const dataUrl = await (await import('qrcode')).toDataURL(url.toString(), { margin: 0, scale: 4 });
+          const res = await fetch(dataUrl);
+          qrBytes = new Uint8Array(await res.arrayBuffer());
+        } catch {}
+      }
+      const pdfBytes = await generateCertificate(participant, {
+        eventName: settings.eventName,
+        eventDetails: settings.eventDetails,
+        organizerName: settings.organizerName,
+        organizerWebsite: settings.organizerWebsite,
+        certifyText: settings.certifyText,
+        fatherPrefix: settings.fatherPrefix,
+        completionText: settings.completionText ? `${settings.completionText} ${settings.eventName || ''}`.trim() : undefined,
+        completionSubText: settings.completionSubText,
+        authorizedName: settings.authorizedName,
+        qrBytes,
+      });
       downloadPDF(pdfBytes, `certificate_${participant.regNo}.pdf`);
 
       const participants = JSON.parse(localStorage.getItem('participants') || '[]');

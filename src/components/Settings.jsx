@@ -6,6 +6,7 @@ export default function Settings() {
   const [eventDetails, setEventDetails] = useState('Participation Certificate');
   const [organizerName, setOrganizerName] = useState('');
   const [organizerWebsite, setOrganizerWebsite] = useState('');
+  const [authorizedName, setAuthorizedName] = useState('');
   const [qrEnabled, setQrEnabled] = useState(false);
   const [qrBaseUrl, setQrBaseUrl] = useState('');
   const [certifyText, setCertifyText] = useState('This is to certify that');
@@ -19,6 +20,7 @@ export default function Settings() {
     if (s.eventDetails) setEventDetails(s.eventDetails);
     if (s.organizerName) setOrganizerName(s.organizerName);
     if (s.organizerWebsite) setOrganizerWebsite(s.organizerWebsite);
+    if (s.authorizedName) setAuthorizedName(s.authorizedName);
     if (typeof s.qrEnabled === 'boolean') setQrEnabled(s.qrEnabled);
     if (s.qrBaseUrl) setQrBaseUrl(s.qrBaseUrl);
     if (s.certifyText) setCertifyText(s.certifyText);
@@ -28,7 +30,7 @@ export default function Settings() {
   }, []);
 
   const save = () => {
-    const s = { eventName, eventDetails, organizerName, organizerWebsite, qrEnabled, qrBaseUrl, certifyText, fatherPrefix, completionText, completionSubText };
+    const s = { eventName, eventDetails, organizerName, organizerWebsite, authorizedName, qrEnabled, qrBaseUrl, certifyText, fatherPrefix, completionText, completionSubText };
     localStorage.setItem('cert_settings', JSON.stringify(s));
     alert('Settings saved');
   };
@@ -53,6 +55,10 @@ export default function Settings() {
         <div>
           <label className="block text-sm font-medium text-slate-700">Event Details</label>
           <input value={eventDetails} onChange={(e) => setEventDetails(e.target.value)} className="mt-1 w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-slate-800" />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-slate-700">Authorized Person Name</label>
+          <input value={authorizedName} onChange={(e) => setAuthorizedName(e.target.value)} className="mt-1 w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-slate-800" placeholder="e.g., Saksham Shakya" />
         </div>
         <div>
           <label className="block text-sm font-medium text-slate-700">Organizer Name</label>

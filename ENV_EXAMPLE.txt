@@ -1,0 +1,12 @@
+# Backend SMTP configuration
+SMTP_HOST=smtp.gmail.com.com
+SMTP_PORT=465
+SMTP_USER=sakshamshakya319@gmail.com
+SMTP_PASS=iarnrvqngefozbbs
+SMTP_FROM="sakshamshakya319@gmail.com"
+
+# Optional: server port (defaults to 3001)
+PORT=3001
+
+# Frontend config
+VITE_EMAIL_SERVER_URL=http://localhost:3001
