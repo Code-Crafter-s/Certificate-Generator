@@ -31,10 +31,10 @@ export async function generateCertificate(participant, settings = {}) {
       const logoBytes = new Uint8Array(Buffer.from(settings.logoBase64, 'base64'));
       console.log('Logo bytes length:', logoBytes.length);
       const logoImage = await embedImage(pdfDoc, logoBytes);
-      const logoWidth = 84;
+      const logoWidth = 100; // Increased from 84 to 100
       const logoHeight = (logoImage.height / logoImage.width) * logoWidth;
-      const logoX = 42;
-      const logoY = height - 112 - logoHeight / 2;
+      const logoX = 40; // 2px from inner frame (was 42, now 40 for 2px more space)
+      const logoY = height - 110 - logoHeight / 2; // Reduced 2px from top (was 112, now 110)
       page.drawImage(logoImage, {
         x: logoX,
         y: logoY,
@@ -56,10 +56,10 @@ export async function generateCertificate(participant, settings = {}) {
       const logo2Bytes = new Uint8Array(Buffer.from(settings.secondLogoBase64, 'base64'));
       console.log('Second logo bytes length:', logo2Bytes.length);
       const logo2 = await embedImage(pdfDoc, logo2Bytes);
-      const logoWidth = 84;
+      const logoWidth = 100; // Increased from 84 to 100
       const logoHeight = (logo2.height / logo2.width) * logoWidth;
-      const logoX = width - 42 - logoWidth;
-      const logoY = height - 112 - logoHeight / 2;
+      const logoX = width - 40 - logoWidth; // 2px from inner frame (was 42, now 40 for 2px more space)
+      const logoY = height - 110 - logoHeight / 2; // Reduced 2px from top (was 112, now 110)
       page.drawImage(logo2, {
         x: logoX,
         y: logoY,

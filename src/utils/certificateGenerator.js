@@ -14,14 +14,14 @@ export async function generateCertificate(participant, options = {}) {
   const borderColor = rgb(0.13, 0.29, 0.53);
   const accentColor = rgb(0.8, 0.65, 0.13);
 
-  // Optional: draw a logo image in the header if provided (slightly reduced size)
+  // Optional: draw a logo image in the header if provided
   if (options.logoBytes) {
     try {
       const logoImage = await embedImage(pdfDoc, options.logoBytes);
-      const logoWidth = 84; // reduced by 6px for better balance
+      const logoWidth = 100; // Increased from 84 to 100
       const logoHeight = (logoImage.height / logoImage.width) * logoWidth;
-      const logoX = 42; // 2px from inner frame (x=40)
-      const logoY = height - 112 - logoHeight / 2; // drop by 2px for more top spacing
+      const logoX = 40; // 2px from inner frame (was 42, now 40 for 2px more space)
+      const logoY = height - 110 - logoHeight / 2; // Reduced 2px from top (was 112, now 110)
       page.drawImage(logoImage, {
         x: logoX,
         y: logoY,
@@ -36,11 +36,11 @@ export async function generateCertificate(participant, options = {}) {
   if (rightLogoBytes) {
     try {
       const logo2 = await embedImage(pdfDoc, rightLogoBytes);
-      const logoWidth = 84; // match left logo
+      const logoWidth = 100; // Increased from 84 to 100
       const logoHeight = (logo2.height / logo2.width) * logoWidth;
       // Ensure 2px gap from inner border: inner left=40, right=width-40
-      const logoX = width - 42 - logoWidth; // 2px from inner right
-      const logoY = height - 112 - logoHeight / 2; // drop by 2px for top spacing
+      const logoX = width - 40 - logoWidth; // 2px from inner right (was 42, now 40 for 2px more space)
+      const logoY = height - 110 - logoHeight / 2; // Reduced 2px from top (was 112, now 110)
       page.drawImage(logo2, {
         x: logoX,
         y: logoY,
