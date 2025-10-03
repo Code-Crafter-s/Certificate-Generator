@@ -67,6 +67,15 @@ app.get('/api/test-pdf/:participantId', async (req, res) => {
     }
     
     const settings = await Settings.findOne();
+    console.log('Settings for test PDF:', {
+      hasLogo: !!settings?.logoBase64,
+      hasSecondLogo: !!settings?.secondLogoBase64,
+      hasSignature: !!settings?.signatureBase64,
+      authorizedName: settings?.authorizedName,
+      qrEnabled: settings?.qrEnabled,
+      qrBaseUrl: settings?.qrBaseUrl
+    });
+    
     const pdfBytes = await generateCertificate(participant, settings);
     
     res.setHeader('Content-Type', 'application/pdf');
@@ -74,6 +83,33 @@ app.get('/api/test-pdf/:participantId', async (req, res) => {
     res.send(pdfBytes);
   } catch (error) {
     console.error('Test PDF generation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Settings validation endpoint
+app.get('/api/settings/debug', async (req, res) => {
+  try {
+    const settings = await Settings.findOne();
+    if (!settings) {
+      return res.json({ error: 'No settings found' });
+    }
+    
+    res.json({
+      hasLogo: !!settings.logoBase64,
+      hasSecondLogo: !!settings.secondLogoBase64,
+      hasSignature: !!settings.signatureBase64,
+      authorizedName: settings.authorizedName,
+      qrEnabled: settings.qrEnabled,
+      qrBaseUrl: settings.qrBaseUrl,
+      eventName: settings.eventName,
+      organizerName: settings.organizerName,
+      logoLength: settings.logoBase64 ? settings.logoBase64.length : 0,
+      secondLogoLength: settings.secondLogoBase64 ? settings.secondLogoBase64.length : 0,
+      signatureLength: settings.signatureBase64 ? settings.signatureBase64.length : 0
+    });
+  } catch (error) {
+    console.error('Settings debug error:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -330,6 +366,15 @@ app.post('/api/send-bulk', async (req, res) => {
         
         // Generate PDF certificate
         console.log(`Generating PDF for participant: ${participant.name} (${participant.regNo})`);
+        console.log('Settings data:', {
+          hasLogo: !!settings?.logoBase64,
+          hasSecondLogo: !!settings?.secondLogoBase64,
+          hasSignature: !!settings?.signatureBase64,
+          authorizedName: settings?.authorizedName,
+          qrEnabled: settings?.qrEnabled,
+          qrBaseUrl: settings?.qrBaseUrl,
+          eventName: settings?.eventName
+        });
         const pdfBytes = await generateCertificate(participant, settings);
         console.log(`PDF generated, size: ${pdfBytes.length} bytes`);
         

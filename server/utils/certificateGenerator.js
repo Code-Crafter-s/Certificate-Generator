@@ -2,6 +2,16 @@ import { PDFDocument, rgb, StandardFonts } from 'pdf-lib';
 import QRCode from 'qrcode';
 
 export async function generateCertificate(participant, settings = {}) {
+  console.log('Certificate generation started for:', participant.name);
+  console.log('Settings received:', {
+    hasLogo: !!settings?.logoBase64,
+    hasSecondLogo: !!settings?.secondLogoBase64,
+    hasSignature: !!settings?.signatureBase64,
+    authorizedName: settings?.authorizedName,
+    qrEnabled: settings?.qrEnabled,
+    qrBaseUrl: settings?.qrBaseUrl
+  });
+  
   const pdfDoc = await PDFDocument.create();
   const page = pdfDoc.addPage([842, 595]);
 
@@ -16,8 +26,10 @@ export async function generateCertificate(participant, settings = {}) {
 
   // Optional: draw a logo image in the header if provided
   if (settings.logoBase64) {
+    console.log('Processing logo image...');
     try {
       const logoBytes = new Uint8Array(Buffer.from(settings.logoBase64, 'base64'));
+      console.log('Logo bytes length:', logoBytes.length);
       const logoImage = await embedImage(pdfDoc, logoBytes);
       const logoWidth = 84;
       const logoHeight = (logoImage.height / logoImage.width) * logoWidth;
@@ -29,15 +41,20 @@ export async function generateCertificate(participant, settings = {}) {
         width: logoWidth,
         height: logoHeight,
       });
+      console.log('Logo image embedded successfully');
     } catch (error) {
       console.error('Error embedding logo:', error);
     }
+  } else {
+    console.log('No logo base64 data provided');
   }
 
   // Optional: draw a second logo on the right side
   if (settings.secondLogoBase64) {
+    console.log('Processing second logo image...');
     try {
       const logo2Bytes = new Uint8Array(Buffer.from(settings.secondLogoBase64, 'base64'));
+      console.log('Second logo bytes length:', logo2Bytes.length);
       const logo2 = await embedImage(pdfDoc, logo2Bytes);
       const logoWidth = 84;
       const logoHeight = (logo2.height / logo2.width) * logoWidth;
@@ -49,9 +66,12 @@ export async function generateCertificate(participant, settings = {}) {
         width: logoWidth,
         height: logoHeight,
       });
+      console.log('Second logo image embedded successfully');
     } catch (error) {
       console.error('Error embedding second logo:', error);
     }
+  } else {
+    console.log('No second logo base64 data provided');
   }
 
   // Outer border
@@ -227,6 +247,7 @@ export async function generateCertificate(participant, settings = {}) {
   const authorizedLabel = 'Authorized Signature';
   const authorizedName = settings.authorizedName || '';
   const combined = authorizedName ? `${authorizedLabel} — ${authorizedName}` : authorizedLabel;
+  console.log('Drawing authorized signature text:', combined);
   page.drawText(combined, {
     x: authBaseX,
     y: lineY - 20,
@@ -259,8 +280,10 @@ export async function generateCertificate(participant, settings = {}) {
 
   // Optional: draw signature image if provided
   if (settings.signatureBase64) {
+    console.log('Processing signature image...');
     try {
       const signatureBytes = new Uint8Array(Buffer.from(settings.signatureBase64, 'base64'));
+      console.log('Signature bytes length:', signatureBytes.length);
       const signImage = await embedImage(pdfDoc, signatureBytes);
       const signWidth = 140;
       const signHeight = (signImage.height / signImage.width) * signWidth;
@@ -270,17 +293,22 @@ export async function generateCertificate(participant, settings = {}) {
         width: signWidth,
         height: signHeight,
       });
+      console.log('Signature image embedded successfully');
     } catch (error) {
       console.error('Error embedding signature:', error);
     }
+  } else {
+    console.log('No signature base64 data provided');
   }
 
   // Optional: draw QR code if enabled
   if (settings.qrEnabled && settings.qrBaseUrl) {
+    console.log('Processing QR code...');
     try {
       const qrUrl = new URL(settings.qrBaseUrl);
       qrUrl.searchParams.set('name', participant.name);
       qrUrl.searchParams.set('regNo', participant.regNo);
+      console.log('QR URL:', qrUrl.toString());
       
       const qrDataUrl = await QRCode.toDataURL(qrUrl.toString(), { 
         margin: 0, 
@@ -292,6 +320,7 @@ export async function generateCertificate(participant, settings = {}) {
       });
       
       const qrBytes = new Uint8Array(Buffer.from(qrDataUrl.split(',')[1], 'base64'));
+      console.log('QR bytes length:', qrBytes.length);
       const qrImage = await embedImage(pdfDoc, qrBytes);
       const qrSize = 88;
       const qrX = width / 2 - qrSize / 2;
@@ -302,9 +331,12 @@ export async function generateCertificate(participant, settings = {}) {
         width: qrSize,
         height: qrSize,
       });
+      console.log('QR code embedded successfully');
     } catch (error) {
       console.error('Error generating QR code:', error);
     }
+  } else {
+    console.log('QR code disabled or no base URL provided');
   }
 
   const pdfBytes = await pdfDoc.save();
