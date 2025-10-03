@@ -1,4 +1,5 @@
-const API_BASE_URL = import.meta.env.VITE_EMAIL_SERVER_URL || 'http://localhost:3001';
+const rawBaseUrl = import.meta.env.VITE_EMAIL_SERVER_URL || 'http://localhost:3001';
+const API_BASE_URL = rawBaseUrl.replace(/\/?api(?:\/health)?$/i, '');
 
 class ApiService {
   constructor() {
