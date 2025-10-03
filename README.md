@@ -58,7 +58,7 @@ npm run dev
    ```
 
 2. **Deploy to Vercel**
-   - Install Vercel CLI: `npm i -g vercel`
+   - Install Vercel CLI: `npm i -g vercel` v1
    - Login: `vercel login`
    - Deploy: `vercel --prod`
    - Or connect your GitHub repo at [vercel.com](https://vercel.com)

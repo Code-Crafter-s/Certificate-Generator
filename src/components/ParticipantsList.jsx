@@ -42,6 +42,23 @@ export default function ParticipantsList() {
       const settings = await apiService.getSettings();
       setEmailSubject(settings.emailSubject || 'Your Certificate');
       setEmailMessage(settings.emailMessage || 'Dear Participant,\n\nPlease find your certificate attached.\n\nBest regards,');
+      
+      // Load images from database
+      if (settings.logoBase64) {
+        const logoBytes = Uint8Array.from(atob(settings.logoBase64), c => c.charCodeAt(0));
+        setLogoBytes(logoBytes);
+      }
+      if (settings.secondLogoBase64) {
+        const secondLogoBytes = Uint8Array.from(atob(settings.secondLogoBase64), c => c.charCodeAt(0));
+        setSecondLogoBytes(secondLogoBytes);
+      }
+      if (settings.signatureBase64) {
+        const signatureBytes = Uint8Array.from(atob(settings.signatureBase64), c => c.charCodeAt(0));
+        setSignatureBytes(signatureBytes);
+      }
+      if (settings.signatureLabel) {
+        setSignatureLabel(settings.signatureLabel);
+      }
     } catch (error) {
       console.error('Failed to load settings:', error);
     }
@@ -217,12 +234,22 @@ export default function ParticipantsList() {
     }
   };
 
-  const handleImageUpload = async (e, setter) => {
+  const handleImageUpload = async (e, setter, imageType) => {
     const file = e.target.files && e.target.files[0];
     if (!file) return;
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
+      const base64 = bytesToBase64(bytes);
       setter(bytes);
+      
+      // Save to settings in database
+      const currentSettings = await apiService.getSettings();
+      const updatedSettings = {
+        ...currentSettings,
+        [imageType]: base64
+      };
+      await apiService.updateSettings(updatedSettings);
+      console.log(`${imageType} saved to database`);
     } catch (err) {
       console.error('Failed to read image:', err);
       alert('Failed to read image file');
@@ -350,12 +377,12 @@ export default function ParticipantsList() {
           <div className="grid grid-cols-1 gap-3">
             <label className="flex items-center justify-center gap-2 w-full cursor-pointer bg-white border border-dashed border-slate-300 hover:border-slate-400 rounded-lg py-6 text-slate-700">
               <Upload className="w-4 h-4" /> Left Logo (PNG/JPEG)
-              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setLogoBytes)} />
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setLogoBytes, 'logoBase64')} />
             </label>
             {logoBytes && <p className="text-xs text-green-700">Left logo attached</p>}
             <label className="flex items-center justify-center gap-2 w-full cursor-pointer bg-white border border-dashed border-slate-300 hover:border-slate-400 rounded-lg py-6 text-slate-700">
               <Upload className="w-4 h-4" /> Right Logo (PNG/JPEG)
-              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setSecondLogoBytes)} />
+              <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setSecondLogoBytes, 'secondLogoBase64')} />
             </label>
             {secondLogoBytes && <p className="text-xs text-green-700">Right logo attached</p>}
           </div>
@@ -365,10 +392,23 @@ export default function ParticipantsList() {
           <h3 className="font-semibold text-slate-800 mb-3 flex items-center gap-2"><ImageIcon className="w-4 h-4" /> Signature (optional)</h3>
           <label className="flex items-center justify-center gap-2 w-full cursor-pointer bg-white border border-dashed border-slate-300 hover:border-slate-400 rounded-lg py-6 text-slate-700">
             <Upload className="w-4 h-4" /> Choose PNG/JPEG
-            <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setSignatureBytes)} />
+            <input type="file" accept="image/png,image/jpeg" className="hidden" onChange={(e) => handleImageUpload(e, setSignatureBytes, 'signatureBase64')} />
           </label>
           {signatureBytes && <p className="mt-3 text-sm text-green-700">Signature attached</p>}
-          <input value={signatureLabel} onChange={(e) => setSignatureLabel(e.target.value)} className="mt-3 w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800" placeholder="Signature label (e.g., Authorized Signatory)" />
+          <input value={signatureLabel} onChange={async (e) => {
+            setSignatureLabel(e.target.value);
+            // Save signature label to database
+            try {
+              const currentSettings = await apiService.getSettings();
+              const updatedSettings = {
+                ...currentSettings,
+                signatureLabel: e.target.value
+              };
+              await apiService.updateSettings(updatedSettings);
+            } catch (err) {
+              console.error('Failed to save signature label:', err);
+            }
+          }} className="mt-3 w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800" placeholder="Signature label (e.g., Authorized Signatory)" />
         </div>
       </div>
 
