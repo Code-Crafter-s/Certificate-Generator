@@ -58,6 +58,26 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true });
 });
 
+// Test PDF generation endpoint
+app.get('/api/test-pdf/:participantId', async (req, res) => {
+  try {
+    const participant = await Participant.findById(req.params.participantId);
+    if (!participant) {
+      return res.status(404).json({ error: 'Participant not found' });
+    }
+    
+    const settings = await Settings.findOne();
+    const pdfBytes = await generateCertificate(participant, settings);
+    
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="test_certificate_${participant.regNo}.pdf"`);
+    res.send(pdfBytes);
+  } catch (error) {
+    console.error('Test PDF generation error:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Alias endpoint (user requested): treat /api/wealth as a health check
 app.get('/api/wealth', (req, res) => {
   res.json({ ok: true, alias: 'health' });
@@ -309,8 +329,14 @@ app.post('/api/send-bulk', async (req, res) => {
         await emailLog.save();
         
         // Generate PDF certificate
+        console.log(`Generating PDF for participant: ${participant.name} (${participant.regNo})`);
         const pdfBytes = await generateCertificate(participant, settings);
-        const pdfBase64 = pdfBytes.toString('base64');
+        console.log(`PDF generated, size: ${pdfBytes.length} bytes`);
+        
+        // Ensure we have a proper Uint8Array for base64 encoding
+        const pdfUint8Array = pdfBytes instanceof Uint8Array ? pdfBytes : new Uint8Array(pdfBytes);
+        const pdfBase64 = Buffer.from(pdfUint8Array).toString('base64');
+        console.log(`PDF base64 length: ${pdfBase64.length} characters`);
         
         const content = pdfBase64;
         const defaultFrom = process.env.SMTP_FROM || (isEthereal ? 'no-reply@example.test' : '');

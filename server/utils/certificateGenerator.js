@@ -17,7 +17,7 @@ export async function generateCertificate(participant, settings = {}) {
   // Optional: draw a logo image in the header if provided
   if (settings.logoBase64) {
     try {
-      const logoBytes = Buffer.from(settings.logoBase64, 'base64');
+      const logoBytes = new Uint8Array(Buffer.from(settings.logoBase64, 'base64'));
       const logoImage = await embedImage(pdfDoc, logoBytes);
       const logoWidth = 84;
       const logoHeight = (logoImage.height / logoImage.width) * logoWidth;
@@ -37,7 +37,7 @@ export async function generateCertificate(participant, settings = {}) {
   // Optional: draw a second logo on the right side
   if (settings.secondLogoBase64) {
     try {
-      const logo2Bytes = Buffer.from(settings.secondLogoBase64, 'base64');
+      const logo2Bytes = new Uint8Array(Buffer.from(settings.secondLogoBase64, 'base64'));
       const logo2 = await embedImage(pdfDoc, logo2Bytes);
       const logoWidth = 84;
       const logoHeight = (logo2.height / logo2.width) * logoWidth;
@@ -260,7 +260,7 @@ export async function generateCertificate(participant, settings = {}) {
   // Optional: draw signature image if provided
   if (settings.signatureBase64) {
     try {
-      const signatureBytes = Buffer.from(settings.signatureBase64, 'base64');
+      const signatureBytes = new Uint8Array(Buffer.from(settings.signatureBase64, 'base64'));
       const signImage = await embedImage(pdfDoc, signatureBytes);
       const signWidth = 140;
       const signHeight = (signImage.height / signImage.width) * signWidth;
@@ -291,7 +291,7 @@ export async function generateCertificate(participant, settings = {}) {
         }
       });
       
-      const qrBytes = Buffer.from(qrDataUrl.split(',')[1], 'base64');
+      const qrBytes = new Uint8Array(Buffer.from(qrDataUrl.split(',')[1], 'base64'));
       const qrImage = await embedImage(pdfDoc, qrBytes);
       const qrSize = 88;
       const qrX = width / 2 - qrSize / 2;
