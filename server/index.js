@@ -13,7 +13,25 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 dotenv.config({ path: path.join(__dirname, '..', '.env') });
 
 const app = express();
-app.use(cors());
+
+// CORS: allow specific origin (env) or default vite dev
+const allowedOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
+const corsOptions = {
+  origin: (origin, cb) => {
+    // allow requests with no origin (mobile apps, curl)
+    if (!origin) return cb(null, true);
+    if (origin === allowedOrigin || allowedOrigin === '*') return cb(null, true);
+    return cb(null, false);
+  },
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: false,
+  maxAge: 86400,
+};
+app.use(cors(corsOptions));
+
+// Ensure explicit preflight route for send-bulk
+app.options('/api/send-bulk', cors(corsOptions));
 // Allow larger payloads for multiple attachments
 app.use(express.json({ limit: '50mb' }));
 
@@ -90,7 +108,26 @@ app.post('/api/send-bulk', async (req, res) => {
     if (!Array.isArray(recipients) || recipients.length === 0) {
       return res.status(400).json({ error: 'recipients array required' });
     }
-    const tx = await getTransporter();
+    let tx = await getTransporter();
+    // Proactively verify SMTP credentials to fail fast (e.g., Mailjet 535)
+    try {
+      await tx.verify();
+    } catch (verr) {
+      console.error('SMTP verify failed:', verr);
+      const wantFallback = String(process.env.SMTP_FALLBACK_TO_ETHEREAL || '').toLowerCase() === 'true';
+      if (wantFallback) {
+        // switch to Ethereal automatically to allow testing to proceed
+        transporter = undefined; // reset
+        process.env.ETHEREAL = 'true';
+        tx = await getTransporter();
+      } else {
+        return res.status(400).json({
+          error: 'SMTP authentication failed. Check SMTP_USER/SMTP_PASS and verified FROM.',
+          providerHint: 'For Mailjet use host in-v3.mailjet.com, port 587 (TLS) or 465 (SSL), username=API Key, password=Secret Key, and a verified sender/domain in SMTP_FROM.',
+          code: verr && (verr.code || verr.responseCode) || 'EAUTH',
+        });
+      }
+    }
     const results = [];
     const concurrency = Math.max(1, Number(process.env.SMTP_CONCURRENCY || 3));
     const timeoutMs = Math.max(5000, Number(process.env.SMTP_TIMEOUT_MS || 30000));
