@@ -18,6 +18,8 @@ export default function ParticipantsList() {
   const [statusFilter, setStatusFilter] = useState('all'); // all|pending|delivered|bounced
   const [emailSubject, setEmailSubject] = useState('Your Certificate');
   const [emailMessage, setEmailMessage] = useState('Dear Participant,\n\nPlease find your certificate attached.\n\nBest regards,');
+  const [isSending, setIsSending] = useState(false);
+  const [sendProgress, setSendProgress] = useState(0); // 0..100
 
   useEffect(() => {
     loadParticipants();
@@ -139,6 +141,10 @@ export default function ParticipantsList() {
     const serverUrl = (import.meta.env && import.meta.env.VITE_EMAIL_SERVER_URL) || 'http://localhost:3001';
     const settings = readSettings();
     const recipients = [];
+    setIsSending(true);
+    setSendProgress(0);
+    const totalToProcess = filteredParticipants.filter(p => !!p.email).length || 1;
+    let processed = 0;
     for (const p of filteredParticipants) {
       if (!p.email) continue;
       const qrBytes = await maybeGenerateQrBytes(p, settings);
@@ -165,9 +171,13 @@ export default function ParticipantsList() {
         filename: `certificate_${p.regNo}.pdf`,
         pdfBase64: base64,
       });
+      processed += 1;
+      setSendProgress(Math.min(99, Math.round((processed / totalToProcess) * 80))); // up to 80% while preparing
     }
     if (recipients.length === 0) {
       alert('No emails found in the current list. Ensure participants include an email field.');
+      setIsSending(false);
+      setSendProgress(0);
       return;
     }
     try {
@@ -175,9 +185,14 @@ export default function ParticipantsList() {
       await fetch(`${serverUrl}/api/health`).then(r => r.ok);
     } catch (e) {
       alert('Email server is not reachable. Start it with "npm run server" and set VITE_EMAIL_SERVER_URL.');
+      setIsSending(false);
+      setSendProgress(0);
       return;
     }
     try {
+      setSendProgress(prev => Math.max(prev, 85));
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 60000); // 60s client timeout
       const resp = await fetch(`${serverUrl}/api/send-bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -186,17 +201,31 @@ export default function ParticipantsList() {
           html: emailMessage ? `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;line-height:1.5;white-space:pre-line">${emailMessage}</div>` : undefined,
           recipients,
         }),
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       const json = await resp.json();
       if (!resp.ok) {
         alert(`Bulk email failed: ${json.error || 'Unknown error'}`);
+        setIsSending(false);
+        setSendProgress(0);
         return;
       }
       const ok = json.results.filter(r => r.ok).length;
       const fail = json.results.length - ok;
-      alert(`Emails sent. Success: ${ok}, Failed: ${fail}`);
+      setSendProgress(100);
+      alert(`Emails sent successfully. Success: ${ok}, Failed: ${fail}`);
     } catch (e) {
-      alert('Failed to reach email server. Check your network, CORS, and server logs.');
+      alert(e?.name === 'AbortError' ? 'Email request timed out. Try again.' : 'Failed to reach email server. Check your network, CORS, and server logs.');
+      setIsSending(false);
+      setSendProgress(0);
+      return;
+    } finally {
+      // brief delay so 100% is visible
+      setTimeout(() => {
+        setIsSending(false);
+        setSendProgress(0);
+      }, 600);
     }
   };
 
@@ -292,12 +321,12 @@ export default function ParticipantsList() {
             <p className="text-slate-600 text-sm">Total: {participants.length}</p>
           </div>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center">
           <button onClick={runNameCleanup} className="inline-flex items-center gap-2 px-3 py-2 bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium rounded-lg">
             <Wand2 className="w-4 h-4" /> Clean Names
           </button>
-          <button onClick={sendBulkEmails} className="inline-flex items-center gap-2 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg">
-            Send Emails
+          <button onClick={sendBulkEmails} disabled={isSending} className={`inline-flex items-center gap-2 px-3 py-2 text-white text-sm font-medium rounded-lg ${isSending ? 'bg-emerald-400' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+            {isSending ? (<><Loader2 className="w-4 h-4 animate-spin" /> Sending... {sendProgress}%</>) : (<>Send Emails</>)}
           </button>
         </div>
       </div>
@@ -389,6 +418,16 @@ export default function ParticipantsList() {
             <option value="delivered">Delivered</option>
             <option value="bounced">Bounced</option>
           </select>
+          <div className="hidden md:flex items-center gap-3 ml-auto">
+            {isSending && (
+              <>
+                <div className="w-40 h-2 bg-slate-200 rounded-full overflow-hidden">
+                  <div className="h-full bg-emerald-600" style={{ width: `${sendProgress}%` }} />
+                </div>
+                <span className="text-sm text-slate-600 min-w-[3ch]">{sendProgress}%</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
 

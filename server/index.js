@@ -76,6 +76,10 @@ async function getTransporter() {
     secure: port === 465,
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
+    // pooling improves throughput and avoids handshake per email
+    pool: true,
+    maxConnections: Number(process.env.SMTP_MAX_CONN || 3),
+    maxMessages: Number(process.env.SMTP_MAX_MSG || 100),
   });
   return transporter;
 }
@@ -88,39 +92,61 @@ app.post('/api/send-bulk', async (req, res) => {
     }
     const tx = await getTransporter();
     const results = [];
-    for (const r of recipients) {
-      const { email, name, filename, pdfBase64 } = r;
+    const concurrency = Math.max(1, Number(process.env.SMTP_CONCURRENCY || 3));
+    const timeoutMs = Math.max(5000, Number(process.env.SMTP_TIMEOUT_MS || 30000));
+
+    const tasks = recipients.map((r) => async () => {
+      const { email, name, filename, pdfBase64 } = r || {};
       if (!email || !pdfBase64) {
-        results.push({ email, ok: false, error: 'missing email or pdf' });
-        continue;
+        return { email, ok: false, error: 'missing email or pdf' };
       }
       try {
-        // Accept both raw base64 or data URLs
         const content = typeof pdfBase64 === 'string' && pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
         const defaultFrom = process.env.SMTP_FROM || (isEthereal ? 'no-reply@example.test' : '');
         if (!from && !defaultFrom && !isEthereal) {
           throw new Error('Missing SMTP_FROM. Set SMTP_FROM in environment or provide "from" in request');
         }
-        const info = await tx.sendMail({
-          from: from || defaultFrom || undefined,
-          to: email,
-          subject: subject || 'Your Certificate',
-          html: html || `<p>Dear ${name || ''},</p><p>Please find your certificate attached.</p>`,
-          attachments: [
-            {
-              filename: filename || 'certificate.pdf',
-              content,
-              encoding: 'base64',
-              contentType: 'application/pdf',
-            },
-          ],
-        });
+        const info = await Promise.race([
+          tx.sendMail({
+            from: from || defaultFrom || undefined,
+            to: email,
+            subject: subject || 'Your Certificate',
+            html: html || `<p>Dear ${name || ''},</p><p>Please find your certificate attached.</p>`,
+            attachments: [
+              {
+                filename: filename || 'certificate.pdf',
+                content,
+                encoding: 'base64',
+                contentType: 'application/pdf',
+              },
+            ],
+          }),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('SMTP send timeout')), timeoutMs)),
+        ]);
         const previewUrl = isEthereal ? nodemailer.getTestMessageUrl(info) : undefined;
-        results.push({ email, ok: true, messageId: info.messageId, previewUrl });
+        return { email, ok: true, messageId: info.messageId, previewUrl };
       } catch (e) {
         console.error('Email send failed for', email, e);
-        results.push({ email, ok: false, error: e.message });
+        return { email, ok: false, error: e.message };
       }
+    });
+
+    // simple concurrency runner
+    const queue = tasks.slice();
+    const running = [];
+    while (queue.length > 0 || running.length > 0) {
+      while (running.length < concurrency && queue.length > 0) {
+        const t = queue.shift();
+        const p = t().then((r) => {
+          results.push(r);
+        }).finally(() => {
+          const idx = running.indexOf(p);
+          if (idx >= 0) running.splice(idx, 1);
+        });
+        running.push(p);
+      }
+      // wait for any to finish
+      if (running.length > 0) await Promise.race(running);
     }
     res.json({ results });
   } catch (e) {
