@@ -8,6 +8,7 @@ import { fileURLToPath } from 'url';
 import Participant from './models/Participant.js';
 import Settings from './models/Settings.js';
 import EmailLog from './models/EmailLog.js';
+import { generateCertificate } from './utils/certificateGenerator.js';
 
 // Load env from both project root and server directory for robustness
 const __filename = fileURLToPath(import.meta.url);
@@ -307,11 +308,11 @@ app.post('/api/send-bulk', async (req, res) => {
         });
         await emailLog.save();
         
-        // Generate PDF certificate (this would need to be implemented)
-        // For now, we'll use a placeholder - you'll need to integrate with your PDF generation
-        const pdfBase64 = 'placeholder'; // This should be generated using your certificate generator
+        // Generate PDF certificate
+        const pdfBytes = await generateCertificate(participant, settings);
+        const pdfBase64 = pdfBytes.toString('base64');
         
-        const content = typeof pdfBase64 === 'string' && pdfBase64.includes(',') ? pdfBase64.split(',')[1] : pdfBase64;
+        const content = pdfBase64;
         const defaultFrom = process.env.SMTP_FROM || (isEthereal ? 'no-reply@example.test' : '');
         if (!from && !defaultFrom && !isEthereal) {
           throw new Error('Missing SMTP_FROM. Set SMTP_FROM in environment or provide "from" in request');
