@@ -400,9 +400,15 @@ app.post('/api/send-bulk', async (req, res) => {
   }
 });
 
-const port = process.env.PORT || 3001;
-app.listen(port, () => {
-  console.log(`Email server listening on http://localhost:${port}`);
-});
+// Export the app for Vercel
+export default app;
+
+// Only start server if not in Vercel environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  const port = process.env.PORT || 3001;
+  app.listen(port, () => {
+    console.log(`Email server listening on http://localhost:${port}`);
+  });
+}
 
 

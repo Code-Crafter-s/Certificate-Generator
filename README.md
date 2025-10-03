@@ -69,38 +69,63 @@ npm run dev
 
 #### Backend Deployment (Vercel Functions)
 
-1. **Create Vercel configuration**
-   Create `vercel.json` in project root:
+1. **Vercel configuration is already set up**
+   The `vercel.json` file is configured with the correct settings:
    ```json
    {
-     "functions": {
-       "server/index.js": {
-         "runtime": "nodejs18.x"
+     "version": 2,
+     "builds": [
+       {
+         "src": "server/index.js",
+         "use": "@vercel/node"
+       },
+       {
+         "src": "package.json",
+         "use": "@vercel/static-build",
+         "config": {
+           "distDir": "dist"
+         }
        }
-     },
+     ],
      "routes": [
        {
          "src": "/api/(.*)",
          "dest": "/server/index.js"
+       },
+       {
+         "src": "/(.*)",
+         "dest": "/$1"
        }
-     ]
+     ],
+     "env": {
+       "NODE_ENV": "production"
+     }
    }
    ```
 
-2. **Deploy backend**
+2. **Deploy to Vercel**
    ```bash
+   # Install Vercel CLI if not already installed
+   npm i -g vercel
+   
+   # Login to Vercel
+   vercel login
+   
+   # Deploy
    vercel --prod
    ```
 
-3. **Set backend environment variables in Vercel**
+3. **Set environment variables in Vercel dashboard**
    - Go to your project → Settings → Environment Variables
-   - Add all SMTP variables:
-     - `SMTP_HOST`
-     - `SMTP_PORT`
-     - `SMTP_USER`
-     - `SMTP_PASS`
-     - `SMTP_FROM`
-     - `ETHEREAL` (set to `true` for testing)
+   - Add all required variables:
+     - `MONGODB_URI` (your MongoDB connection string)
+     - `SMTP_HOST` (e.g., smtp.gmail.com)
+     - `SMTP_PORT` (465 for SSL, 587 for TLS)
+     - `SMTP_USER` (your email or API key)
+     - `SMTP_PASS` (your password or API secret)
+     - `SMTP_FROM` (sender email address)
+     - `CORS_ORIGIN` (your frontend URL, e.g., https://your-app.vercel.app)
+     - `ETHEREAL` (set to `true` for testing, `false` for production)
 
 ### Option B: Separate Backend Hosting
 
