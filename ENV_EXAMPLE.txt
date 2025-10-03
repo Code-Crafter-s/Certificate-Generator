@@ -1,9 +1,12 @@
-# Backend SMTP configuration
-SMTP_HOST=smtp.gmail.com.com
+# Backend SMTP configuration (Gmail example)
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=465
-SMTP_USER=sakshamshakya319@gmail.com
-SMTP_PASS=iarnrvqngefozbbs
-SMTP_FROM="sakshamshakya319@gmail.com"
+SMTP_USER=your_gmail@gmail.com
+SMTP_PASS=your_app_password
+SMTP_FROM="Your Name <your_gmail@gmail.com>"
+
+# Optional: enable test mode with Ethereal (no real emails)
+# ETHEREAL=true
 
 # Optional: server port (defaults to 3001)
 PORT=3001

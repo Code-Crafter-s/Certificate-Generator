@@ -16,6 +16,8 @@ export default function ParticipantsList() {
   const [signatureLabel, setSignatureLabel] = useState('Authorized Signatory');
   const [bulkGenerating, setBulkGenerating] = useState(false);
   const [statusFilter, setStatusFilter] = useState('all'); // all|pending|delivered|bounced
+  const [emailSubject, setEmailSubject] = useState('Your Certificate');
+  const [emailMessage, setEmailMessage] = useState('Dear Participant,\n\nPlease find your certificate attached.\n\nBest regards,');
 
   useEffect(() => {
     loadParticipants();
@@ -110,16 +112,27 @@ export default function ParticipantsList() {
   const addExcelRowsToParticipants = () => {
     if (excelRows.length === 0) return;
     const existing = JSON.parse(localStorage.getItem('participants') || '[]');
-    const regSet = new Set(existing.map(p => p.regNo));
+    const regSet = new Set(existing.map(p => String(p.regNo)));
     const merged = [...existing];
+    let addedCount = 0;
     for (const r of excelRows) {
-      if (!regSet.has(r.regNo)) {
+      const reg = String(r.regNo);
+      if (!regSet.has(reg)) {
         merged.push(r);
-        regSet.add(r.regNo);
+        regSet.add(reg);
+        addedCount++;
       }
     }
     persistParticipants(merged);
     setParticipants(merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+    // UX feedback
+    if (addedCount > 0) {
+      alert(`Added ${addedCount} row(s) to the list.`);
+    } else {
+      alert('No new rows added (all were duplicates or invalid).');
+    }
+    // Clear parsed rows after adding
+    setExcelRows([]);
   };
 
   const sendBulkEmails = async () => {
@@ -168,7 +181,11 @@ export default function ParticipantsList() {
       const resp = await fetch(`${serverUrl}/api/send-bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recipients }),
+        body: JSON.stringify({
+          subject: emailSubject || undefined,
+          html: emailMessage ? `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;line-height:1.5;white-space:pre-line">${emailMessage}</div>` : undefined,
+          recipients,
+        }),
       });
       const json = await resp.json();
       if (!resp.ok) {
@@ -331,6 +348,25 @@ export default function ParticipantsList() {
           </label>
           {signatureBytes && <p className="mt-3 text-sm text-green-700">Signature attached</p>}
           <input value={signatureLabel} onChange={(e) => setSignatureLabel(e.target.value)} className="mt-3 w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800" placeholder="Signature label (e.g., Authorized Signatory)" />
+        </div>
+      </div>
+
+      {/* Email customization card */}
+      <div className="grid grid-cols-1 gap-6 mb-6">
+        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+          <h3 className="font-semibold text-slate-800 mb-3">Email Message</h3>
+          <input
+            value={emailSubject}
+            onChange={(e) => setEmailSubject(e.target.value)}
+            className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 mb-3"
+            placeholder="Email subject"
+          />
+          <textarea
+            value={emailMessage}
+            onChange={(e) => setEmailMessage(e.target.value)}
+            className="w-full bg-white border border-slate-300 rounded-md px-3 py-2 text-sm text-slate-800 h-28"
+            placeholder="Email message (plain text). Use new lines for paragraphs."
+          />
         </div>
       </div>
 
