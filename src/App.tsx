@@ -6,12 +6,14 @@ import ParticipantsList from './components/ParticipantsList.jsx';
 import Settings from './components/Settings.jsx';
 
 type Participant = {
-  id: string;
+  _id: string;
   name: string;
   fatherName: string;
   regNo: string;
+  email?: string;
   createdAt: string;
   certificateGenerated?: boolean;
+  deliveredStatus?: string;
 };
 
 function App() {

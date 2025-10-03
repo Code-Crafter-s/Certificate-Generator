@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { CheckCircle, Download, Loader2 } from 'lucide-react';
 import { generateCertificate, downloadPDF } from '../utils/certificateGenerator';
+import apiService from '../services/api';
 
 export default function CertificateSuccess({ participant, onReset }) {
   const [generating, setGenerating] = useState(false);
@@ -8,7 +9,7 @@ export default function CertificateSuccess({ participant, onReset }) {
   const handleDownload = async () => {
     setGenerating(true);
     try {
-      const settings = JSON.parse(localStorage.getItem('cert_settings') || '{}');
+      const settings = await apiService.getSettings();
       // In success screen we don't have logo/signature bytes; keep it simple but include texts and QR if enabled
       let qrBytes = null;
       if (settings.qrEnabled && settings.qrBaseUrl) {
@@ -35,11 +36,11 @@ export default function CertificateSuccess({ participant, onReset }) {
       });
       downloadPDF(pdfBytes, `certificate_${participant.regNo}.pdf`);
 
-      const participants = JSON.parse(localStorage.getItem('participants') || '[]');
-      const updated = participants.map(p =>
-        p.regNo === participant.regNo ? { ...p, certificateGenerated: true } : p
-      );
-      localStorage.setItem('participants', JSON.stringify(updated));
+      // Update participant status in database
+      await apiService.updateParticipant(participant._id, {
+        certificateGenerated: true,
+        deliveredStatus: 'delivered'
+      });
     } catch (error) {
       console.error('Error generating certificate:', error);
       alert('Failed to generate certificate. Please try again.');

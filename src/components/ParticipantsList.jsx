@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import QRCode from 'qrcode';
 import { generateCertificate, downloadPDF } from '../utils/certificateGenerator';
 import { bytesToBase64 } from '../utils/bytes';
+import apiService from '../services/api';
 
 export default function ParticipantsList() {
   const [participants, setParticipants] = useState([]);
@@ -23,18 +24,41 @@ export default function ParticipantsList() {
 
   useEffect(() => {
     loadParticipants();
+    loadSettings();
   }, []);
 
-  const loadParticipants = () => {
-    const stored = JSON.parse(localStorage.getItem('participants') || '[]');
-    setParticipants(stored.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
+  const loadParticipants = async () => {
+    try {
+      const data = await apiService.getParticipants();
+      setParticipants(data);
+    } catch (error) {
+      console.error('Failed to load participants:', error);
+      alert('Failed to load participants. Please refresh the page.');
+    }
   };
 
-  const persistParticipants = (list) => {
-    localStorage.setItem('participants', JSON.stringify(list));
+  const loadSettings = async () => {
+    try {
+      const settings = await apiService.getSettings();
+      setEmailSubject(settings.emailSubject || 'Your Certificate');
+      setEmailMessage(settings.emailMessage || 'Dear Participant,\n\nPlease find your certificate attached.\n\nBest regards,');
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
   };
 
-  const readSettings = () => JSON.parse(localStorage.getItem('cert_settings') || '{}');
+  const persistParticipants = async (list) => {
+    // No longer needed - data is persisted via API calls
+  };
+
+  const readSettings = async () => {
+    try {
+      return await apiService.getSettings();
+    } catch (error) {
+      console.error('Failed to read settings:', error);
+      return {};
+    }
+  };
 
   const ensureStatus = (p) => ({
     deliveredStatus: 'pending', // pending|delivered|bounced
@@ -42,15 +66,15 @@ export default function ParticipantsList() {
   });
 
   const handleDownloadCertificate = async (participant) => {
-    setGeneratingId(participant.id);
+    setGeneratingId(participant._id);
     try {
-      const settings = readSettings();
+      const settings = await readSettings();
       const qrBytes = await maybeGenerateQrBytes(participant, settings);
       const pdfBytes = await generateCertificate(ensureStatus(participant), {
-        logoBytes,
-        secondLogoBytes,
-        signatureBytes,
-        signatureLabel,
+        logoBytes: settings.logoBase64 ? Uint8Array.from(atob(settings.logoBase64), c => c.charCodeAt(0)) : null,
+        secondLogoBytes: settings.secondLogoBase64 ? Uint8Array.from(atob(settings.secondLogoBase64), c => c.charCodeAt(0)) : null,
+        signatureBytes: settings.signatureBase64 ? Uint8Array.from(atob(settings.signatureBase64), c => c.charCodeAt(0)) : null,
+        signatureLabel: settings.signatureLabel || 'Authorized Signatory',
         authorizedName: settings.authorizedName,
         eventName: settings.eventName,
         eventDetails: settings.eventDetails,
@@ -64,11 +88,14 @@ export default function ParticipantsList() {
       });
       downloadPDF(pdfBytes, `certificate_${participant.regNo}.pdf`);
 
-      const updated = participants.map(p =>
-        p.id === participant.id ? { ...p, certificateGenerated: true, deliveredStatus: 'delivered' } : p
-      );
-      setParticipants(updated);
-      persistParticipants(updated);
+      // Update participant status in database
+      await apiService.updateParticipant(participant._id, {
+        certificateGenerated: true,
+        deliveredStatus: 'delivered'
+      });
+
+      // Refresh participants list
+      await loadParticipants();
     } catch (error) {
       console.error('Error generating certificate:', error);
       alert('Failed to generate certificate. Please try again.');
@@ -111,122 +138,78 @@ export default function ParticipantsList() {
     }
   };
 
-  const addExcelRowsToParticipants = () => {
+  const addExcelRowsToParticipants = async () => {
     if (excelRows.length === 0) return;
-    const existing = JSON.parse(localStorage.getItem('participants') || '[]');
-    const regSet = new Set(existing.map(p => String(p.regNo)));
-    const merged = [...existing];
-    let addedCount = 0;
-    for (const r of excelRows) {
-      const reg = String(r.regNo);
-      if (!regSet.has(reg)) {
-        merged.push(r);
-        regSet.add(reg);
-        addedCount++;
+    
+    try {
+      const results = await apiService.bulkImportParticipants(excelRows);
+      const successCount = results.results.filter(r => r.success).length;
+      const failCount = results.results.length - successCount;
+      
+      if (successCount > 0) {
+        alert(`Added ${successCount} row(s) to the list.${failCount > 0 ? ` ${failCount} failed due to duplicates or validation errors.` : ''}`);
+        await loadParticipants(); // Refresh the list
+      } else {
+        alert('No new rows added (all were duplicates or invalid).');
       }
+      
+      // Clear parsed rows after adding
+      setExcelRows([]);
+    } catch (error) {
+      console.error('Failed to import participants:', error);
+      alert('Failed to import participants. Please try again.');
     }
-    persistParticipants(merged);
-    setParticipants(merged.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
-    // UX feedback
-    if (addedCount > 0) {
-      alert(`Added ${addedCount} row(s) to the list.`);
-    } else {
-      alert('No new rows added (all were duplicates or invalid).');
-    }
-    // Clear parsed rows after adding
-    setExcelRows([]);
   };
 
   const sendBulkEmails = async () => {
-    const rawServerUrl = (import.meta.env && import.meta.env.VITE_EMAIL_SERVER_URL) || 'http://localhost:3001';
-    // Normalize server URL to avoid duplicated paths like /api/health/api/send-bulk
-    // - remove trailing slashes
-    // - strip any trailing /api... segment if present in env var
-    const baseNoSlash = String(rawServerUrl).replace(/\/+$/, '');
-    const serverUrlBase = baseNoSlash.replace(/\/(?:api)(?:\/.*)?$/, '');
-    const settings = readSettings();
-    const recipients = [];
     setIsSending(true);
     setSendProgress(0);
-    const totalToProcess = filteredParticipants.filter(p => !!p.email).length || 1;
-    let processed = 0;
-    for (const p of filteredParticipants) {
-      if (!p.email) continue;
-      const qrBytes = await maybeGenerateQrBytes(p, settings);
-      const pdfBytes = await generateCertificate(p, {
-        logoBytes,
-        secondLogoBytes,
-        signatureBytes,
-        signatureLabel,
-        authorizedName: settings.authorizedName,
-        eventName: settings.eventName,
-        eventDetails: settings.eventDetails,
-        organizerName: settings.organizerName,
-        organizerWebsite: settings.organizerWebsite,
-        certifyText: settings.certifyText,
-        fatherPrefix: settings.fatherPrefix,
-        completionText: settings.completionText ? `${settings.completionText} ${settings.eventName || ''}`.trim() : undefined,
-        completionSubText: settings.completionSubText,
-        qrBytes,
-      });
-      const base64 = bytesToBase64(new Uint8Array(pdfBytes));
-      recipients.push({
-        email: p.email,
-        name: p.name,
-        filename: `certificate_${p.regNo}.pdf`,
-        pdfBase64: base64,
-      });
-      processed += 1;
-      setSendProgress(Math.min(99, Math.round((processed / totalToProcess) * 80))); // up to 80% while preparing
-    }
-    if (recipients.length === 0) {
+    
+    const participantsWithEmail = filteredParticipants.filter(p => !!p.email);
+    if (participantsWithEmail.length === 0) {
       alert('No emails found in the current list. Ensure participants include an email field.');
       setIsSending(false);
       setSendProgress(0);
       return;
     }
+
     try {
-      // quick health check for better error ux
-      await fetch(`${serverUrlBase}/api/health`).then(r => r.ok);
+      // Health check
+      await apiService.healthCheck();
     } catch (e) {
       alert('Email server is not reachable. Start it with "npm run server" and set VITE_EMAIL_SERVER_URL.');
       setIsSending(false);
       setSendProgress(0);
       return;
     }
+
     try {
-      setSendProgress(prev => Math.max(prev, 85));
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 60000); // 60s client timeout
-      const resp = await fetch(`${serverUrlBase}/api/send-bulk`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          subject: emailSubject || undefined,
-          html: emailMessage ? `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;line-height:1.5;white-space:pre-line">${emailMessage}</div>` : undefined,
-          recipients,
-        }),
-        signal: controller.signal,
+      setSendProgress(50);
+      
+      // Get participant IDs for bulk email
+      const participantIds = participantsWithEmail.map(p => p._id);
+      
+      // Send bulk emails using the new API
+      const results = await apiService.sendBulkEmails(participantIds, {
+        subject: emailSubject,
+        html: emailMessage ? `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;line-height:1.5;white-space:pre-line">${emailMessage}</div>` : undefined,
       });
-      clearTimeout(timeout);
-      const json = await resp.json();
-      if (!resp.ok) {
-        alert(`Bulk email failed: ${json.error || 'Unknown error'}`);
-        setIsSending(false);
-        setSendProgress(0);
-        return;
-      }
-      const ok = json.results.filter(r => r.ok).length;
-      const fail = json.results.length - ok;
+      
       setSendProgress(100);
+      
+      const ok = results.results.filter(r => r.ok).length;
+      const fail = results.results.length - ok;
+      
       alert(`Emails sent successfully. Success: ${ok}, Failed: ${fail}`);
+      
+      // Refresh participants list to show updated status
+      await loadParticipants();
+      
     } catch (e) {
-      alert(e?.name === 'AbortError' ? 'Email request timed out. Try again.' : 'Failed to reach email server. Check your network, CORS, and server logs.');
-      setIsSending(false);
-      setSendProgress(0);
-      return;
+      console.error('Bulk email failed:', e);
+      alert(e?.name === 'AbortError' ? 'Email request timed out. Try again.' : `Failed to send emails: ${e.message}`);
     } finally {
-      // brief delay so 100% is visible
+      // Brief delay so 100% is visible
       setTimeout(() => {
         setIsSending(false);
         setSendProgress(0);
@@ -300,10 +283,14 @@ export default function ParticipantsList() {
     persistParticipants(updated);
   };
 
-  const updateStatus = (id, status) => {
-    const updated = participants.map(p => p.id === id ? { ...p, deliveredStatus: status } : p);
-    setParticipants(updated);
-    persistParticipants(updated);
+  const updateStatus = async (id, status) => {
+    try {
+      await apiService.updateParticipant(id, { deliveredStatus: status });
+      await loadParticipants(); // Refresh the list
+    } catch (error) {
+      console.error('Failed to update participant status:', error);
+      alert('Failed to update participant status. Please try again.');
+    }
   };
 
   const filteredParticipants = participants
@@ -459,7 +446,7 @@ export default function ParticipantsList() {
             </thead>
             <tbody>
               {filteredParticipants.map((participant) => (
-                <tr key={participant.id} className="border-b border-slate-100 hover:bg-slate-50 transition">
+                <tr key={participant._id} className="border-b border-slate-100 hover:bg-slate-50 transition">
                   <td className="py-4 px-4">
                     <span className="font-mono text-sm font-medium text-blue-600">{participant.regNo}</span>
                   </td>
@@ -479,7 +466,7 @@ export default function ParticipantsList() {
                     </div>
                   </td>
                   <td className="py-4 px-4">
-                    <select value={participant.deliveredStatus || 'pending'} onChange={(e) => updateStatus(participant.id, e.target.value)} className="border border-slate-300 rounded-md px-2 py-1 text-sm">
+                    <select value={participant.deliveredStatus || 'pending'} onChange={(e) => updateStatus(participant._id, e.target.value)} className="border border-slate-300 rounded-md px-2 py-1 text-sm">
                       <option value="pending">Pending</option>
                       <option value="delivered">Delivered</option>
                       <option value="bounced">Bounced</option>
@@ -488,10 +475,10 @@ export default function ParticipantsList() {
                   <td className="py-4 px-4 text-center">
                     <button
                       onClick={() => handleDownloadCertificate(participant)}
-                      disabled={generatingId === participant.id}
+                      disabled={generatingId === participant._id}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white text-sm font-medium rounded-lg transition duration-200 shadow-sm hover:shadow"
                     >
-                      {generatingId === participant.id ? (
+                      {generatingId === participant._id ? (
                         <>
                           <Loader2 className="w-4 h-4 animate-spin" />
                           Generating...

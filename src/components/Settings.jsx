@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Save, Settings as SettingsIcon, QrCode } from 'lucide-react';
+import apiService from '../services/api';
 
 export default function Settings() {
   const [eventName, setEventName] = useState('HackManthan 2025');
@@ -15,24 +16,49 @@ export default function Settings() {
   const [completionSubText, setCompletionSubText] = useState('with exceptional engagement and dedication.');
 
   useEffect(() => {
-    const s = JSON.parse(localStorage.getItem('cert_settings') || '{}');
-    if (s.eventName) setEventName(s.eventName);
-    if (s.eventDetails) setEventDetails(s.eventDetails);
-    if (s.organizerName) setOrganizerName(s.organizerName);
-    if (s.organizerWebsite) setOrganizerWebsite(s.organizerWebsite);
-    if (s.authorizedName) setAuthorizedName(s.authorizedName);
-    if (typeof s.qrEnabled === 'boolean') setQrEnabled(s.qrEnabled);
-    if (s.qrBaseUrl) setQrBaseUrl(s.qrBaseUrl);
-    if (s.certifyText) setCertifyText(s.certifyText);
-    if (s.fatherPrefix) setFatherPrefix(s.fatherPrefix);
-    if (s.completionText) setCompletionText(s.completionText);
-    if (s.completionSubText) setCompletionSubText(s.completionSubText);
+    loadSettings();
   }, []);
 
-  const save = () => {
-    const s = { eventName, eventDetails, organizerName, organizerWebsite, authorizedName, qrEnabled, qrBaseUrl, certifyText, fatherPrefix, completionText, completionSubText };
-    localStorage.setItem('cert_settings', JSON.stringify(s));
-    alert('Settings saved');
+  const loadSettings = async () => {
+    try {
+      const s = await apiService.getSettings();
+      if (s.eventName) setEventName(s.eventName);
+      if (s.eventDetails) setEventDetails(s.eventDetails);
+      if (s.organizerName) setOrganizerName(s.organizerName);
+      if (s.organizerWebsite) setOrganizerWebsite(s.organizerWebsite);
+      if (s.authorizedName) setAuthorizedName(s.authorizedName);
+      if (typeof s.qrEnabled === 'boolean') setQrEnabled(s.qrEnabled);
+      if (s.qrBaseUrl) setQrBaseUrl(s.qrBaseUrl);
+      if (s.certifyText) setCertifyText(s.certifyText);
+      if (s.fatherPrefix) setFatherPrefix(s.fatherPrefix);
+      if (s.completionText) setCompletionText(s.completionText);
+      if (s.completionSubText) setCompletionSubText(s.completionSubText);
+    } catch (error) {
+      console.error('Failed to load settings:', error);
+    }
+  };
+
+  const save = async () => {
+    try {
+      const s = { 
+        eventName, 
+        eventDetails, 
+        organizerName, 
+        organizerWebsite, 
+        authorizedName, 
+        qrEnabled, 
+        qrBaseUrl, 
+        certifyText, 
+        fatherPrefix, 
+        completionText, 
+        completionSubText 
+      };
+      await apiService.updateSettings(s);
+      alert('Settings saved successfully');
+    } catch (error) {
+      console.error('Failed to save settings:', error);
+      alert('Failed to save settings. Please try again.');
+    }
   };
 
   return (

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { CircleUser as UserCircle, User, FileText } from 'lucide-react';
+import apiService from '../services/api';
 
 export default function RegistrationForm({ onRegister }) {
   const [formData, setFormData] = useState({
@@ -16,30 +17,23 @@ export default function RegistrationForm({ onRegister }) {
     setLoading(true);
 
     try {
-      const participants = JSON.parse(localStorage.getItem('participants') || '[]');
-
-      if (participants.find(p => p.regNo === formData.regNo)) {
-        setError('Registration number already exists!');
-        setLoading(false);
-        return;
-      }
-
       const newParticipant = {
-        id: Date.now().toString(),
         name: formData.name,
         fatherName: formData.fatherName,
         regNo: formData.regNo,
-        createdAt: new Date().toISOString(),
-        certificateGenerated: false
+        certificateGenerated: false,
+        deliveredStatus: 'pending'
       };
 
-      participants.push(newParticipant);
-      localStorage.setItem('participants', JSON.stringify(participants));
-
-      onRegister(newParticipant);
+      const createdParticipant = await apiService.createParticipant(newParticipant);
+      onRegister(createdParticipant);
       setFormData({ name: '', fatherName: '', regNo: '' });
     } catch (err) {
-      setError('Registration failed. Please try again.');
+      if (err.message.includes('already exists')) {
+        setError('Registration number already exists!');
+      } else {
+        setError('Registration failed. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
