@@ -138,7 +138,12 @@ export default function ParticipantsList() {
   };
 
   const sendBulkEmails = async () => {
-    const serverUrl = (import.meta.env && import.meta.env.VITE_EMAIL_SERVER_URL) || 'http://localhost:3001';
+    const rawServerUrl = (import.meta.env && import.meta.env.VITE_EMAIL_SERVER_URL) || 'http://localhost:3001';
+    // Normalize server URL to avoid duplicated paths like /api/health/api/send-bulk
+    // - remove trailing slashes
+    // - strip any trailing /api... segment if present in env var
+    const baseNoSlash = String(rawServerUrl).replace(/\/+$/, '');
+    const serverUrlBase = baseNoSlash.replace(/\/(?:api)(?:\/.*)?$/, '');
     const settings = readSettings();
     const recipients = [];
     setIsSending(true);
@@ -182,7 +187,7 @@ export default function ParticipantsList() {
     }
     try {
       // quick health check for better error ux
-      await fetch(`${serverUrl}/api/health`).then(r => r.ok);
+      await fetch(`${serverUrlBase}/api/health`).then(r => r.ok);
     } catch (e) {
       alert('Email server is not reachable. Start it with "npm run server" and set VITE_EMAIL_SERVER_URL.');
       setIsSending(false);
@@ -193,7 +198,7 @@ export default function ParticipantsList() {
       setSendProgress(prev => Math.max(prev, 85));
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 60000); // 60s client timeout
-      const resp = await fetch(`${serverUrl}/api/send-bulk`, {
+      const resp = await fetch(`${serverUrlBase}/api/send-bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

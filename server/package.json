@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js"
+    "start": "node index.js",
+    "build": "node -e \"console.log('Building server (no build step required)')\""
   },
   "dependencies": {
     "cors": "^2.8.5",
