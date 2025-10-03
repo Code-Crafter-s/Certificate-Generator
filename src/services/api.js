@@ -1,5 +1,8 @@
+// For Vercel deployment, use relative URLs for same-domain API calls
+// For local development, use the environment variable
+const isProduction = import.meta.env.PROD;
 const rawBaseUrl = import.meta.env.VITE_EMAIL_SERVER_URL || 'http://localhost:3001';
-const API_BASE_URL = rawBaseUrl.replace(/\/?api(?:\/health)?$/i, '');
+const API_BASE_URL = isProduction ? '' : rawBaseUrl.replace(/\/?api(?:\/health)?$/i, '');
 
 class ApiService {
   constructor() {
@@ -16,6 +19,10 @@ class ApiService {
       ...options,
     };
 
+    // Debug logging
+    console.log(`Making API request to: ${url}`);
+    console.log(`Base URL: ${this.baseURL}, Endpoint: ${endpoint}`);
+
     try {
       const response = await fetch(url, config);
       const data = await response.json();
@@ -27,6 +34,7 @@ class ApiService {
       return data;
     } catch (error) {
       console.error(`API request failed for ${endpoint}:`, error);
+      console.error(`Full URL: ${url}`);
       throw error;
     }
   }

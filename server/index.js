@@ -29,8 +29,10 @@ mongoose.connect(MONGODB_URI)
 const allowedOrigin = process.env.CORS_ORIGIN || 'http://localhost:5173';
 const corsOptions = {
   origin: (origin, cb) => {
-    // allow requests with no origin (mobile apps, curl)
+    // allow requests with no origin (mobile apps, curl, same-origin requests)
     if (!origin) return cb(null, true);
+    // allow same-origin requests (for Vercel deployment)
+    if (origin && origin.includes('vercel.app')) return cb(null, true);
     if (origin === allowedOrigin || allowedOrigin === '*') return cb(null, true);
     return cb(null, false);
   },
